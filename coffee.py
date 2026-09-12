@@ -1,7 +1,9 @@
+````python
 import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.express as px
+from pathlib import Path
 
 
 # ============================================================
@@ -23,71 +25,80 @@ st.set_page_config(
 st.markdown("""
 <style>
 
-    .main {
-        background-color: #F8F9FA;
-    }
+.main {
+    background-color: #F8F9FA;
+}
 
-    .block-container {
-        padding-top: 1.5rem;
-        padding-bottom: 2rem;
-    }
+.block-container {
+    padding-top: 1.5rem;
+    padding-bottom: 2rem;
+}
 
-    /* Main title */
-    .dashboard-title {
-        font-size: 38px;
-        font-weight: 700;
-        color: #4B2E20;
-        margin-bottom: 0px;
-    }
+.dashboard-title {
+    font-size: 38px;
+    font-weight: 700;
+    color: #4B2E20;
+    margin-bottom: 0px;
+}
 
-    .dashboard-subtitle {
-        font-size: 17px;
-        color: #6C757D;
-        margin-bottom: 25px;
-    }
+.dashboard-subtitle {
+    font-size: 17px;
+    color: #6C757D;
+    margin-bottom: 25px;
+}
 
-    /* KPI cards */
-    .kpi-card {
-        background-color: white;
-        padding: 20px;
-        border-radius: 12px;
-        box-shadow: 0px 3px 12px rgba(0,0,0,0.08);
-        border-left: 5px solid #8B5E3C;
-    }
+.kpi-card {
+    background-color: white;
+    padding: 20px;
+    border-radius: 12px;
+    box-shadow: 0px 3px 12px rgba(0,0,0,0.08);
+    border-left: 5px solid #8B5E3C;
+}
 
-    .kpi-title {
-        color: #6C757D;
-        font-size: 14px;
-        font-weight: 600;
-    }
+.kpi-title {
+    color: #6C757D;
+    font-size: 14px;
+    font-weight: 600;
+}
 
-    .kpi-value {
-        color: #4B2E20;
-        font-size: 27px;
-        font-weight: 700;
-        margin-top: 5px;
-    }
+.kpi-value {
+    color: #4B2E20;
+    font-size: 27px;
+    font-weight: 700;
+    margin-top: 5px;
+}
 
-    /* Section headings */
-    .section-title {
-        font-size: 23px;
-        font-weight: 700;
-        color: #4B2E20;
-        margin-top: 20px;
-        margin-bottom: 10px;
-    }
-
-    /* Sidebar */
-    [data-testid="stSidebar"] {
-        background-color: #3E2723;
-    }
-
-    [data-testid="stSidebar"] * {
-        color: white;
-    }
+.section-title {
+    font-size: 23px;
+    font-weight: 700;
+    color: #4B2E20;
+    margin-top: 20px;
+    margin-bottom: 10px;
+}
 
 </style>
 """, unsafe_allow_html=True)
+
+
+# ============================================================
+# FIND DATASET
+# ============================================================
+
+BASE_DIR = Path(__file__).resolve().parent
+
+possible_paths = [
+    BASE_DIR / "Datasets" / "CoffeeShopSales-cleaned.csv",
+    BASE_DIR / "datasets" / "CoffeeShopSales-cleaned.csv",
+    BASE_DIR / "CoffeeShopSales-cleaned.csv",
+    BASE_DIR.parent / "Datasets" / "CoffeeShopSales-cleaned.csv"
+]
+
+DATA_FILE = None
+
+for path in possible_paths:
+    if path.exists():
+        DATA_FILE = path
+        break
 
 
 # ============================================================
@@ -95,26 +106,111 @@ st.markdown("""
 # ============================================================
 
 @st.cache_data
-def load_data():
+def load_data(file_path):
 
-    df = pd.read_csv("../Datasets/CoffeeShopSales-cleaned.csv")
+    data = pd.read_csv(file_path)
 
-    # Convert date
-    df["transaction_date"] = pd.to_datetime(
-        df["transaction_date"],
-        errors="coerce"
+    # Remove unnecessary unnamed columns if present
+    unnamed_columns = [
+        col for col in data.columns
+        if col.lower().startswith("unnamed")
+    ]
+
+    if unnamed_columns:
+        data = data.drop(columns=unnamed_columns)
+
+    # Convert transaction date
+    if "transaction_date" in data.columns:
+
+        data["transaction_date"] = pd.to_datetime(
+            data["transaction_date"],
+            errors="coerce"
+        )
+
+        # Month name
+        data["Month"] = data["transaction_date"].dt.strftime("%B")
+
+        # Month number for correct sorting
+        data["Month_Number"] = (
+            data["transaction_date"].dt.month
+        )
+
+    return data
+
+
+# ============================================================
+# DATA FILE ERROR HANDLING
+# ============================================================
+
+if DATA_FILE is None:
+
+    st.error(
+        "❌ CoffeeShopSales-cleaned.csv was not found."
     )
 
-    # Month
-    df["Month"] = df["transaction_date"].dt.strftime("%B")
+    st.markdown("""
+    ### Please check your GitHub repository structure
 
-    # Month number for correct sorting
-    df["Month_Number"] = df["transaction_date"].dt.month
+    Your repository should look like this:
 
-    return df
+    ```
+    coffee_shop/
+    │
+    ├── coffee.py
+    ├── requirements.txt
+    │
+    └── Datasets/
+        └── CoffeeShopSales-cleaned.csv
+    ```
+
+    **Important:**
+    - The folder name should be `Datasets`
+    - The CSV should be named exactly:
+      `CoffeeShopSales-cleaned.csv`
+    - Make sure the CSV is committed and pushed to GitHub.
+    """)
+
+    st.stop()
 
 
-df = load_data()
+# Load dataset
+df = load_data(str(DATA_FILE))
+
+
+# ============================================================
+# CHECK REQUIRED COLUMNS
+# ============================================================
+
+required_columns = [
+    "transaction_date",
+    "store_location",
+    "product_category",
+    "product_type",
+    "transaction_qty",
+    "total_amount"
+]
+
+missing_columns = [
+    column
+    for column in required_columns
+    if column not in df.columns
+]
+
+if missing_columns:
+
+    st.error(
+        "❌ Required columns are missing from the dataset."
+    )
+
+    st.write("Missing columns:")
+
+    st.write(missing_columns)
+
+    st.write("Available columns:")
+
+    st.write(df.columns.tolist())
+
+    st.stop()
 
 
 # ============================================================
@@ -130,7 +226,10 @@ st.sidebar.subheader("🔎 Filters")
 
 # Store filter
 stores = ["All Stores"] + sorted(
-    df["store_location"].dropna().unique().tolist()
+    df["store_location"]
+    .dropna()
+    .unique()
+    .tolist()
 )
 
 selected_store = st.sidebar.selectbox(
@@ -141,16 +240,22 @@ selected_store = st.sidebar.selectbox(
 
 # Apply store filter
 if selected_store == "All Stores":
+
     filtered_df = df.copy()
+
 else:
+
     filtered_df = df[
         df["store_location"] == selected_store
-    ]
+    ].copy()
 
 
 # Category filter
 categories = ["All Categories"] + sorted(
-    filtered_df["product_category"].dropna().unique().tolist()
+    filtered_df["product_category"]
+    .dropna()
+    .unique()
+    .tolist()
 )
 
 selected_category = st.sidebar.selectbox(
@@ -162,40 +267,58 @@ selected_category = st.sidebar.selectbox(
 if selected_category != "All Categories":
 
     filtered_df = filtered_df[
-        filtered_df["product_category"] == selected_category
-    ]
+        filtered_df["product_category"]
+        == selected_category
+    ].copy()
 
 
 # Date filter
 min_date = df["transaction_date"].min()
 max_date = df["transaction_date"].max()
 
-selected_dates = st.sidebar.date_input(
-    "📅 Date Range",
-    value=(min_date.date(), max_date.date()),
-    min_value=min_date.date(),
-    max_value=max_date.date()
-)
+
+if pd.notna(min_date) and pd.notna(max_date):
+
+    selected_dates = st.sidebar.date_input(
+        "📅 Date Range",
+        value=(
+            min_date.date(),
+            max_date.date()
+        ),
+        min_value=min_date.date(),
+        max_value=max_date.date()
+    )
+
+    if len(selected_dates) == 2:
+
+        start_date = pd.to_datetime(
+            selected_dates[0]
+        )
+
+        end_date = (
+            pd.to_datetime(selected_dates[1])
+            + pd.Timedelta(days=1)
+            - pd.Timedelta(seconds=1)
+        )
+
+        filtered_df = filtered_df[
+            (
+                filtered_df["transaction_date"]
+                >= start_date
+            )
+            &
+            (
+                filtered_df["transaction_date"]
+                <= end_date
+            )
+        ].copy()
 
 
-if len(selected_dates) == 2:
-
-    start_date = pd.to_datetime(selected_dates[0])
-    end_date = pd.to_datetime(selected_dates[1])
-
-    filtered_df = filtered_df[
-        (filtered_df["transaction_date"] >= start_date)
-        &
-        (filtered_df["transaction_date"] <= end_date)
-    ]
-
-
-# Reset information
 st.sidebar.markdown("---")
 
 st.sidebar.info(
-    "Use the filters above to explore sales "
-    "by store, category and date."
+    "Use the filters above to explore "
+    "coffee shop sales."
 )
 
 
@@ -204,13 +327,15 @@ st.sidebar.info(
 # ============================================================
 
 st.markdown(
-    '<div class="dashboard-title">☕ Coffee Shop Sales Dashboard</div>',
+    '<div class="dashboard-title">'
+    '☕ Coffee Shop Sales Dashboard'
+    '</div>',
     unsafe_allow_html=True
 )
 
 st.markdown(
     '<div class="dashboard-subtitle">'
-    'Explore sales performance, product trends and customer demand'
+    'Analyze sales, products, stores and customer demand'
     '</div>',
     unsafe_allow_html=True
 )
@@ -222,15 +347,19 @@ st.markdown(
 
 total_sales = filtered_df["total_amount"].sum()
 
-total_transactions = filtered_df["transaction_id"].nunique()
-
 total_quantity = filtered_df["transaction_qty"].sum()
 
-average_order_value = (
-    total_sales / total_transactions
-    if total_transactions > 0
-    else 0
-)
+total_transactions = len(filtered_df)
+
+if total_transactions > 0:
+
+    average_transaction = (
+        total_sales / total_transactions
+    )
+
+else:
+
+    average_transaction = 0
 
 
 # ============================================================
@@ -245,8 +374,12 @@ with col1:
     st.markdown(
         f"""
         <div class="kpi-card">
-            <div class="kpi-title">💰 TOTAL SALES</div>
-            <div class="kpi-value">₹{total_sales:,.0f}</div>
+            <div class="kpi-title">
+                💰 TOTAL SALES
+            </div>
+            <div class="kpi-value">
+                ₹{total_sales:,.0f}
+            </div>
         </div>
         """,
         unsafe_allow_html=True
@@ -258,8 +391,12 @@ with col2:
     st.markdown(
         f"""
         <div class="kpi-card">
-            <div class="kpi-title">🧾 TRANSACTIONS</div>
-            <div class="kpi-value">{total_transactions:,}</div>
+            <div class="kpi-title">
+                🧾 TRANSACTIONS
+            </div>
+            <div class="kpi-value">
+                {total_transactions:,}
+            </div>
         </div>
         """,
         unsafe_allow_html=True
@@ -271,8 +408,12 @@ with col3:
     st.markdown(
         f"""
         <div class="kpi-card">
-            <div class="kpi-title">☕ ITEMS SOLD</div>
-            <div class="kpi-value">{total_quantity:,}</div>
+            <div class="kpi-title">
+                ☕ ITEMS SOLD
+            </div>
+            <div class="kpi-value">
+                {total_quantity:,}
+            </div>
         </div>
         """,
         unsafe_allow_html=True
@@ -284,8 +425,12 @@ with col4:
     st.markdown(
         f"""
         <div class="kpi-card">
-            <div class="kpi-title">💵 AVG ORDER VALUE</div>
-            <div class="kpi-value">₹{average_order_value:,.2f}</div>
+            <div class="kpi-title">
+                💵 AVG TRANSACTION
+            </div>
+            <div class="kpi-value">
+                ₹{average_transaction:,.2f}
+            </div>
         </div>
         """,
         unsafe_allow_html=True
@@ -300,25 +445,28 @@ st.markdown("<br>", unsafe_allow_html=True)
 # ============================================================
 
 st.markdown(
-    '<div class="section-title">📈 Sales Overview</div>',
+    '<div class="section-title">'
+    '📈 Sales Overview'
+    '</div>',
     unsafe_allow_html=True
 )
-
 
 col1, col2 = st.columns(2)
 
 
 # ------------------------------------------------------------
-# Monthly Sales
+# MONTHLY SALES
 # ------------------------------------------------------------
 
 with col1:
 
     monthly_sales = (
         filtered_df
-        .groupby(["Month_Number", "Month"])["total_amount"]
+        .groupby(
+            ["Month_Number", "Month"],
+            as_index=False
+        )["total_amount"]
         .sum()
-        .reset_index()
         .sort_values("Month_Number")
     )
 
@@ -329,8 +477,8 @@ with col1:
         markers=True,
         title="Monthly Sales Trend",
         labels={
-            "total_amount": "Sales (₹)",
-            "Month": "Month"
+            "Month": "Month",
+            "total_amount": "Sales (₹)"
         }
     )
 
@@ -347,16 +495,18 @@ with col1:
 
 
 # ------------------------------------------------------------
-# Store Sales
+# STORE SALES
 # ------------------------------------------------------------
 
 with col2:
 
     store_sales = (
         filtered_df
-        .groupby("store_location")["total_amount"]
+        .groupby(
+            "store_location",
+            as_index=False
+        )["total_amount"]
         .sum()
-        .reset_index()
         .sort_values(
             "total_amount",
             ascending=False
@@ -370,8 +520,8 @@ with col2:
         title="Sales by Store",
         text_auto=".2s",
         labels={
-            "total_amount": "Sales (₹)",
-            "store_location": "Store"
+            "store_location": "Store",
+            "total_amount": "Sales (₹)"
         }
     )
 
@@ -391,25 +541,28 @@ with col2:
 # ============================================================
 
 st.markdown(
-    '<div class="section-title">☕ Product Analysis</div>',
+    '<div class="section-title">'
+    '☕ Product Analysis'
+    '</div>',
     unsafe_allow_html=True
 )
-
 
 col1, col2 = st.columns(2)
 
 
 # ------------------------------------------------------------
-# Category Sales
+# CATEGORY SALES
 # ------------------------------------------------------------
 
 with col1:
 
     category_sales = (
         filtered_df
-        .groupby("product_category")["total_amount"]
+        .groupby(
+            "product_category",
+            as_index=False
+        )["total_amount"]
         .sum()
-        .reset_index()
         .sort_values(
             "total_amount",
             ascending=False
@@ -424,8 +577,8 @@ with col1:
         title="Sales by Product Category",
         text_auto=".2s",
         labels={
-            "total_amount": "Sales (₹)",
-            "product_category": "Category"
+            "product_category": "Category",
+            "total_amount": "Sales (₹)"
         }
     )
 
@@ -441,17 +594,23 @@ with col1:
 
 
 # ------------------------------------------------------------
-# Top Product Types
+# TOP 10 PRODUCTS
 # ------------------------------------------------------------
 
 with col2:
 
     top_products = (
         filtered_df
-        .groupby("product_type")["transaction_qty"]
+        .groupby(
+            "product_type",
+            as_index=False
+        )["transaction_qty"]
         .sum()
-        .nlargest(10)
-        .reset_index()
+        .sort_values(
+            "transaction_qty",
+            ascending=False
+        )
+        .head(10)
     )
 
     fig_products = px.bar(
@@ -462,8 +621,8 @@ with col2:
         title="Top 10 Products by Quantity Sold",
         text_auto=True,
         labels={
-            "transaction_qty": "Quantity Sold",
-            "product_type": "Product"
+            "product_type": "Product",
+            "transaction_qty": "Quantity Sold"
         }
     )
 
@@ -483,20 +642,23 @@ with col2:
 # ============================================================
 
 st.markdown(
-    '<div class="section-title">📅 Weekday Performance</div>',
+    '<div class="section-title">'
+    '📅 Weekday Performance'
+    '</div>',
     unsafe_allow_html=True
 )
 
 
 weekday_sales = (
     filtered_df
-    .groupby("weekday")["total_amount"]
+    .groupby(
+        "weekday",
+        as_index=False
+    )["total_amount"]
     .mean()
-    .reset_index()
 )
 
 
-# Keep normal weekday order
 weekday_order = [
     "Monday",
     "Tuesday",
@@ -507,13 +669,19 @@ weekday_order = [
     "Sunday"
 ]
 
-weekday_sales["weekday"] = pd.Categorical(
-    weekday_sales["weekday"],
-    categories=weekday_order,
-    ordered=True
-)
 
-weekday_sales = weekday_sales.sort_values("weekday")
+if "weekday" in filtered_df.columns:
+
+    weekday_sales["weekday"] = pd.Categorical(
+        weekday_sales["weekday"],
+        categories=weekday_order,
+        ordered=True
+    )
+
+    weekday_sales = (
+        weekday_sales
+        .sort_values("weekday")
+    )
 
 
 fig_weekday = px.bar(
@@ -523,8 +691,8 @@ fig_weekday = px.bar(
     title="Average Sales by Weekday",
     text_auto=".2s",
     labels={
-        "total_amount": "Average Sales (₹)",
-        "weekday": "Day"
+        "weekday": "Day",
+        "total_amount": "Average Sales (₹)"
     }
 )
 
@@ -540,11 +708,13 @@ st.plotly_chart(
 
 
 # ============================================================
-# STORE + CATEGORY + PRODUCT EXPLORER
+# PRODUCT EXPLORER
 # ============================================================
 
 st.markdown(
-    '<div class="section-title">🔎 Product Explorer</div>',
+    '<div class="section-title">'
+    '🔎 Product Explorer'
+    '</div>',
     unsafe_allow_html=True
 )
 
@@ -556,14 +726,19 @@ with col1:
 
     explorer_store = st.selectbox(
         "🏪 Choose Store",
-        sorted(df["store_location"].unique()),
+        sorted(
+            df["store_location"]
+            .dropna()
+            .unique()
+            .tolist()
+        ),
         key="explorer_store"
     )
 
 
 explorer_df = df[
     df["store_location"] == explorer_store
-]
+].copy()
 
 
 with col2:
@@ -571,23 +746,28 @@ with col2:
     explorer_category = st.selectbox(
         "☕ Choose Category",
         sorted(
-            explorer_df["product_category"].unique()
+            explorer_df["product_category"]
+            .dropna()
+            .unique()
+            .tolist()
         ),
         key="explorer_category"
     )
 
 
 product_df = explorer_df[
-    explorer_df["product_category"] ==
-    explorer_category
-]
+    explorer_df["product_category"]
+    == explorer_category
+].copy()
 
 
 product_sales = (
     product_df
-    .groupby("product_type")["total_amount"]
+    .groupby(
+        "product_type",
+        as_index=False
+    )["total_amount"]
     .sum()
-    .reset_index()
     .sort_values(
         "total_amount",
         ascending=False
@@ -599,77 +779,12 @@ fig_product_explorer = px.bar(
     product_sales,
     x="product_type",
     y="total_amount",
-    title=f"{explorer_category} Sales at {explorer_store}",
+    title=(
+        f"{explorer_category} Sales - "
+        f"{explorer_store}"
+    ),
     text_auto=".2s",
     labels={
         "product_type": "Product",
-        "total_amount": "Sales (₹)"
-    }
-)
-
-fig_product_explorer.update_layout(
-    template="plotly_white",
-    height=450,
-    xaxis_tickangle=-45
-)
-
-st.plotly_chart(
-    fig_product_explorer,
-    use_container_width=True
-)
-
-
-# ============================================================
-# PIVOT TABLE
-# ============================================================
-
-st.markdown(
-    '<div class="section-title">📊 Category vs Store</div>',
-    unsafe_allow_html=True
-)
-
-
-pivot_table = pd.pivot_table(
-    df,
-    index="product_category",
-    columns="store_location",
-    values="total_amount",
-    aggfunc="sum",
-    margins=True
-)
-
-st.dataframe(
-    pivot_table.style.format("₹{:,.0f}"),
-    use_container_width=True
-)
-
-
-# ============================================================
-# RAW DATA
-# ============================================================
-
-with st.expander("📋 View Transaction Data"):
-
-    st.dataframe(
-        filtered_df,
-        use_container_width=True,
-        height=400
-    )
-
-
-# ============================================================
-# FOOTER
-# ============================================================
-
-st.markdown("---")
-
-st.markdown(
-    """
-    <div style="text-align:center;color:#777;">
-        ☕ Coffee Shop Sales Analytics Dashboard
-        <br>
-        Built with Python • Pandas • Streamlit • Plotly
-    </div>
-    """,
-    unsafe_allow_html=True
-)
+        "total_amount": "Sales (_
+````
